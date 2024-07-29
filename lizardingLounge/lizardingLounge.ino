@@ -8,11 +8,11 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-// The pins for I2C are defined by the Wire-library. 
+// The pins for I2C are defined by the Wire-library.
 // On an arduino UNO:       A4(SDA), A5(SCL)
 // On an arduino MEGA 2560: 20(SDA), 21(SCL)
 // On an arduino LEONARDO:   2(SDA),  3(SCL), ...
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define OLED_RESET -1       // Reset pin # (or -1 if sharing Arduino reset pin)
 #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -22,12 +22,13 @@ char buffer[1024];
 
 // UV Lamp control
 bool UV_LAMP = false;
-int UV_PIN = 1;
+const byte UV_TOGGLE_PIN = 34;
+const byte UV_RELAY_PIN = 32;
 
 // Heat Lamp control
 bool HEAT_LAMP = false;
-int HEAT_PIN = 2;
-
+const byte HEAT_TOGGLE_PIN = 35;
+const byte HEAT_RELAY_PIN = 33;
 
 const unsigned char light_on [] PROGMEM = {
   // 'lightV3', 42x48px
@@ -118,97 +119,73 @@ const unsigned char heat_off [] PROGMEM = {
 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 };
 
-void setup()
+void updateDisplay()
 {
-  if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
-  display.setTextColor(SSD1306_WHITE);        // Draw white text
-
-  Serial.begin(115200);
-  delay(100);
-
-  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
-  // it is a good practice to make sure your code sets wifi mode how you want it.
-
-  // WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
-  WiFiManager wm;
-
-  // reset settings - wipe stored credentials for testing
-  // these are stored by the esp library
-  // wm.resetSettings();
-
-  // Automatically connect using saved credentials,
-  // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
-  // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
-  // then goes into a blocking loop awaiting configuration and will return success result
-
-  bool res;
-  // res = wm.autoConnect(); // auto generated AP name from chipid
-  // res = wm.autoConnect("AutoConnectAP"); // anonymous ap
-  res = wm.autoConnect("AutoConnectAP", "password"); // password protected ap
-
-  if (!res)
-  {
-    Serial.println("Failed to connect");
-    ESP.restart();
-  }
-  else
-  {
-    // if you get here you have connected to the WiFi
-    Serial.println("Lizarding Lounge Active");
-  }
-
-  updateDisplay();
-  setupApi();
-}
-
-void updateDisplay(){
   display.clearDisplay();
   display.setTextSize(1);
   int uv_offset = 12;
   int heat_offset = 64 + 6;
 
-  if ( UV_LAMP ){
-    display.setCursor(uv_offset,0);
+  if (UV_LAMP)
+  {
+    display.setCursor(uv_offset, 0);
     display.println("UV LAMP");
-    display.setCursor(uv_offset + 2,8);
+    display.setCursor(uv_offset + 2, 8);
     display.print("ACTIVE");
-    display.drawBitmap(11,16,light_on, 42, 48, WHITE);}
-  else{
-    display.setCursor(uv_offset,0);
+    display.drawBitmap(11, 16, light_on, 42, 48, WHITE);
+  }
+  else
+  {
+    display.setCursor(uv_offset, 0);
     display.println("UV LAMP");
-    display.setCursor(uv_offset-4,8);
+    display.setCursor(uv_offset - 4, 8);
     display.print("INACTIVE");
-    display.drawBitmap(11,16,light_off, 42, 48, WHITE);}
+    display.drawBitmap(11, 16, light_off, 42, 48, WHITE);
+  }
 
-  if ( HEAT_LAMP ){
-    display.setCursor(heat_offset,0);
+  if (HEAT_LAMP)
+  {
+    display.setCursor(heat_offset, 0);
     display.println("HEAT LAMP");
-    display.setCursor(heat_offset+6,8);
+    display.setCursor(heat_offset + 6, 8);
     display.println("ACTIVE");
-    display.drawBitmap(72,16,heat_on, 48, 48, WHITE);}
-  else{
-    display.setCursor(heat_offset,0);
+    display.drawBitmap(72, 16, heat_on, 48, 48, WHITE);
+  }
+  else
+  {
+    display.setCursor(heat_offset, 0);
     display.println("HEAT LAMP");
-    display.setCursor(heat_offset + 2,8);
+    display.setCursor(heat_offset + 2, 8);
     display.println("INACTIVE");
-    display.drawBitmap(72,16,heat_off, 48, 48, WHITE);}
-
+    display.drawBitmap(72, 16, heat_off, 48, 48, WHITE);
+  }
 
   display.display();
 }
 
-void loop()
+void IRAM_ATTR toggle_heat()
 {
-  server.handleClient();
+  HEAT_LAMP = !HEAT_LAMP;
+  if (HEAT_LAMP)
+    turnOnHeat();
+  else
+    turnOffHeat();
+}
+
+void IRAM_ATTR toggle_uv()
+{
+  UV_LAMP = !UV_LAMP;
+  if (UV_LAMP)
+    turnOnUV();
+  else
+    turnOffUV();
 }
 
 bool turnOnUV()
 {
   Serial.println("Turning on UV Lamp");
   UV_LAMP = true;
+  digitalWrite(UV_RELAY_PIN, HIGH);
   updateDisplay();
   return true;
 }
@@ -217,6 +194,7 @@ bool turnOffUV()
 {
   Serial.println("Turning off UV Lamp");
   UV_LAMP = false;
+  digitalWrite(UV_RELAY_PIN, LOW);
   updateDisplay();
   return true;
 }
@@ -225,6 +203,7 @@ bool turnOnHeat()
 {
   Serial.println("Turning on Heat Lamp");
   HEAT_LAMP = true;
+  digitalWrite(HEAT_RELAY_PIN, HIGH);
   updateDisplay();
   return true;
 }
@@ -233,6 +212,7 @@ bool turnOffHeat()
 {
   Serial.println("Turning off Heat Lamp");
   HEAT_LAMP = false;
+  digitalWrite(HEAT_RELAY_PIN, LOW);
   updateDisplay();
   return true;
 }
@@ -300,7 +280,6 @@ void disableHeat()
   server.send(200, "application/json", "{}");
 }
 
-
 bool jsonFailure(String body)
 {
   json.clear();
@@ -330,4 +309,65 @@ void setupApi()
   server.on("/disable_heat", HTTP_POST, disableHeat);
 
   server.begin();
+}
+
+
+void setup()
+{
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS))
+  {
+    Serial.println(F("SSD1306 allocation failed"));
+    for (;;)
+      ; // Don't proceed, loop forever
+  }
+  display.setTextColor(SSD1306_WHITE); // Draw white text
+
+  Serial.begin(115200);
+  delay(100);
+
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
+  // it is a good practice to make sure your code sets wifi mode how you want it.
+
+  // WiFiManager, Local intialization. Once its business is done, there is no need to keep it around
+  WiFiManager wm;
+
+  // reset settings - wipe stored credentials for testing
+  // these are stored by the esp library
+  // wm.resetSettings();
+
+  // Automatically connect using saved credentials,
+  // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
+  // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
+  // then goes into a blocking loop awaiting configuration and will return success result
+
+  bool res;
+  // res = wm.autoConnect(); // auto generated AP name from chipid
+  // res = wm.autoConnect("AutoConnectAP"); // anonymous ap
+  res = wm.autoConnect("AutoConnectAP", "password"); // password protected ap
+
+  if (!res)
+  {
+    Serial.println("Failed to connect");
+    ESP.restart();
+  }
+  else
+  {
+    // if you get here you have connected to the WiFi
+    Serial.println("Lizarding Lounge Active");
+  }
+
+
+  updateDisplay();
+  setupApi();
+  pinMode(UV_RELAY_PIN, OUTPUT);
+  pinMode(HEAT_RELAY_PIN, OUTPUT);
+  pinMode(UV_TOGGLE_PIN, INPUT);
+  pinMode(HEAT_TOGGLE_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(UV_TOGGLE_PIN), toggle_uv, FALLING);
+  attachInterrupt(digitalPinToInterrupt(HEAT_TOGGLE_PIN), toggle_heat, FALLING);
+}
+
+void loop()
+{
+  server.handleClient();
 }
