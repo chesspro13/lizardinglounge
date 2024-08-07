@@ -3,6 +3,7 @@
 // #include <Wire.h>
 // #include <Adafruit_GFX.h>1
 #include <Adafruit_SSD1306.h>
+#include <HomeSpan.h>
 
 // #define SCREEN_WIDTH 128 // OLED display width, in pixels
 // #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -357,6 +358,17 @@ void setup()
     Serial.println("Lizarding Lounge Active");
   }
 
+  homeSpan.begin(Category::Lighting,"Lizarding Lounge");  
+
+  // Heat Lamp
+  new SpanAccessory();
+    new Service::AccessoryInformation();
+      new Characteristic::Identify();
+      
+    new Service::HeatLamp();
+      new Characteristic::On(false);
+    new Service::UVLamp();
+      new Characteristic::On(false);
 
   // updateDisplay();
   setupApi();
@@ -373,4 +385,5 @@ void setup()
 void loop()
 {
   server.handleClient();
+  homeSpan.poll();
 }
