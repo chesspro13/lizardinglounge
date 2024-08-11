@@ -4,6 +4,7 @@
 // #include <Adafruit_GFX.h>1
 #include <Adafruit_SSD1306.h>
 #include <HomeSpan.h>
+#include "DEV_Lamp.h"
 
 // #define SCREEN_WIDTH 128 // OLED display width, in pixels
 // #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -17,7 +18,7 @@
 // #define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 // Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-WebServer server(80);
+WebServer server(8080);
 JsonDocument json;
 char buffer[1024];
 
@@ -98,7 +99,7 @@ const byte HEAT_RELAY_PIN = 33;
 // 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 // };
 
-// const unsigned char heat_off [] PROGMEM = {
+// const unsigned char heat_off [] PROGMEM = {z
 // // 'Heat OFF V1', 48x48px
 // 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 // 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -324,7 +325,7 @@ void setup()
   // }
   // display.setTextColor(SSD1306_WHITE); // Draw white text
 
-  // Serial.begin(115200);
+  Serial.begin(115200);
   // delay(100);
 
   WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
@@ -361,14 +362,14 @@ void setup()
   homeSpan.begin(Category::Lighting,"Lizarding Lounge");  
 
   // Heat Lamp
-  new SpanAccessory();
+  new SpanAccessory();      
     new Service::AccessoryInformation();
-      new Characteristic::Identify();
-      
-    new Service::HeatLamp();
-      new Characteristic::On(false);
-    new Service::UVLamp();
-      new Characteristic::On(false);
+      new Characteristic::Identify();   
+
+    char* heatLamp = "Heat Lamp";
+    new DEV_Lamp(HEAT_RELAY_PIN, heatLamp);
+    char* uvLamp = "UV Lamp";
+    new DEV_Lamp(UV_RELAY_PIN, uvLamp);
 
   // updateDisplay();
   setupApi();
